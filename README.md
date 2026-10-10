@@ -1,71 +1,75 @@
-# TasmotaPy - Zigbee Web Controller
+# TasmotaPy
 
-Uno script Python che genera una pagina web interattiva per controllare dispositivi Zigbee connessi a un dispositivo **ZB-GW03** con **Tasmota2Zigbee**.
+Python web dashboard for a Tasmota2Zigbee / ZB-GW03 gateway.
 
-## Funzionalità
+This project provides a small Flask app that lists Zigbee devices and lets you send EZSP-style commands from a browser.
 
-- 📱 **Dashboard Web**: Visualizza tutti i dispositivi Zigbee connessi
-- 🎮 **Controllo Dispositivi**: Esegui comandi supportati da EZSP
-- 🔍 **Monitoraggio Real-time**: Stato dei dispositivi in tempo reale
-- 🔌 **Integrazione Tasmota**: Comunica con il gateway via HTTP/MQTT
+## Features
 
-## Requisiti
+- Device list from a Tasmota2Zigbee gateway
+- Browser-based dashboard
+- Generic EZSP command dispatcher
+- Ready for REST/MQTT gateway integrations
+- Mock mode for local demo/testing
 
-- Python 3.8+
-- Dispositivo ZB-GW03 con Tasmota2Zigbee
-- Connessione di rete al gateway
+## Requirements
 
-## Installazione
+- Python 3.10+
+- Flask
+- requests
+
+## Quick start
 
 ```bash
-git clone https://github.com/Stefano2021/TasmotaPy.git
-cd TasmotaPy
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-## Utilizzo
-
-```bash
 python app.py
 ```
 
-Accedi a: `http://localhost:5000`
+Then open:
 
-## Configurazione
+```text
+http://localhost:5000
+```
 
-Modifica `config.py` con i dettagli del tuo gateway:
+## Configuration
+
+Edit `config.py` and set your gateway URL and credentials:
 
 ```python
-GATEWAY_IP = "192.168.1.100"  # IP del tuo ZB-GW03
-GATEWAY_PORT = 80
+GATEWAY_URL = "http://192.168.1.50"
 GATEWAY_USER = "admin"
 GATEWAY_PASSWORD = "password"
+USE_MOCK_DATA = False
 ```
 
-## Struttura Progetto
+If `USE_MOCK_DATA` is `True`, the app shows sample devices even if the gateway is unavailable. This is useful for testing the UI.
 
+## API
+
+Available endpoints:
+
+- `GET /api/devices` -> device list
+- `GET /api/ezsp-commands` -> supported command names
+- `POST /api/command` -> send a command to the gateway
+- `GET /api/status` -> gateway status
+
+Example request:
+
+```bash
+curl -X POST http://localhost:5000/api/command \
+  -H "Content-Type: application/json" \
+  -d '{
+    "device_id": "00:12:4b:00:01:02:03:04",
+    "command": "on",
+    "payload": {"state": true},
+    "endpoint": 1
+  }'
 ```
-TasmotaPy/
-├── app.py                 # App Flask principale
-├── config.py              # Configurazione
-├── requirements.txt       # Dipendenze Python
-├── tasmota_client.py      # Client per comunicare con Tasmota
-├── zigbee_device.py       # Modello dispositivo Zigbee
-├── static/
-│   ├── css/style.css
-│   └── js/app.js
-└── templates/
-    ├── index.html         # Dashboard
-    └── device.html        # Dettagli dispositivo
-```
 
-## API REST
+## Notes
 
-- `GET /api/devices` - Lista dispositivi
-- `GET /api/devices/<address>` - Dettagli dispositivo
-- `POST /api/devices/<address>/command` - Esegui comando
-- `GET /api/status` - Status gateway
+The exact Tasmota2Zigbee API depends on your gateway firmware and how it exposes Zigbee commands. This project is intentionally generic: it tries common REST paths first and lets you configure command names and payloads in one place.
 
-## License
-
-MIT
+If your gateway exposes a different endpoint, edit `DEVICE_ENDPOINTS` and `COMMAND_ENDPOINTS` in `config.py`.
