@@ -1,0 +1,145 @@
+const statusBar = document.getElementById('statusBar');
+const deviceGrid = document.getElementById('deviceGrid');
+const refreshBtn = document.getElementById('refreshBtn');
+const commandPreset = document.getElementById('commandPreset');
+
+let commandCatalog = [];
+
+function setStatus(message, isError = false) {
+  statusBar.textContent = message;
+  statusBar.style.borderColor = isError ? '#7f1d1d' : '#334155';
+  statusBar.style.color = isError ? '#fecaca' : '#e2e8f0';
+}
+
+async function loadCommandCatalog() {
+  const response = await fetch('/api/ezsp-commands');
+  if (!response.ok) {
+    throw new Error('Unable to load command list');
+  }
+  commandCatalog = await response.json();
+
+  commandPreset.innerHTML = commandCatalog
+    .map((command) => `<option value="${command}">${command}</option>`)
+    .join('');
+}
+
+function parseDevice(device) {
+  return {
+    id: device.device_id || device.ieee || device.friendly_name || 'unknown',
+    name: device.friendly_name || device.name || 'Unknown device',
+    ieee: device.ieee || 'n/a',
+    model: device.model || device.type || 'n/a',
+    endpoint: device.endpoint || 1,
+    state: device.state || 'unknown',
+  };
+}
+
+async function loadDevices() {
+  setStatus('Aggiornamento dispositivi in corso...');
+
+  try {
+    const response = await fetch('/api/devices');
+    const devices = await response.json();
+
+    if (!Array.isArray(devices) || devices.length === 0) {
+      deviceGrid.innerHTML = '<div class="card"><h2>Nessun dispositivo trovato</h2><div class="meta">Verifica la configurazione del gateway oppure imposta USE_MOCK_DATA = True.</div></div>';
+      setStatus('Nessun dispositivo trovato');
+      return;
+    }
+
+    deviceGrid.innerHTML = devices
+      .map((device) => {
+        const parsed = parseDevice(device);
+        return `
+          <article class="card">
+            <h2>${parsed.name}</h2>
+            <div class="meta">IEEE: ${parsed.ieee}</div>
+            <div class="meta">Model: ${parsed.model}</div>
+            <div class="meta">Endpoint: ${parsed.endpoint}</div>
+            <div class="meta">Stato: ${parsed.state}</div>
+
+            <div class="command-box">
+              <div class="command-row">
+                <select class="device-command" data-device="${parsed.id}">
+                  ${commandCatalog
+                    .map((cmd) => `<option value="${cmd}">${cmd}</option>`)
+                    .join('')}
+                </select>
+              </div>
+              <div class="command-row">
+                <input class="device-payload" data-device="${parsed.id}" value='{}' placeholder='Payload JSON' />
+              </div>
+              <button data-device="${parsed.id}" data-endpoint="${parsed.endpoint}">Esegui comando</button>
+              <div class="command-result" data-result="${parsed.id}"></div>
+            </div>
+          </article>
+        `;
+      })
+      .join('');
+
+    document.querySelectorAll('button[data-device]').forEach((button) => {
+      button.addEventListener('click', sendCommand);
+    });
+
+    setStatus(`Dispositivi caricati: ${devices.length}`);
+  } catch (error) {
+    setStatus(`Errore: ${error.message}`, true);
+  }
+}
+
+async function sendCommand(event) {
+  const button = event.currentTarget;
+  const deviceId = button.getAttribute('data-device');
+  const endpoint = Number(button.getAttribute('data-endpoint')) || 1;
+  const select = document.querySelector(`.device-command[data-device="${deviceId}"]`);
+  const payloadInput = document.querySelector(`.device-payload[data-device="${deviceId}"]`);
+  const resultBox = document.querySelector(`.command-result[data-result="${deviceId}"]`);
+
+  let payload = {};
+  try {
+    payload = JSON.parse(payloadInput.value || '{}');
+  } catch (error) {
+    resultBox.classList.add('error');
+    resultBox.textContent = 'Payload JSON non valido';
+    return;
+  }
+
+  const command = select.value;
+
+  resultBox.classList.remove('error');
+  resultBox.textContent = 'Invio comando...';
+
+  try {
+    const response = await fetch('/api/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_id: deviceId, endpoint, command, payload }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Comando non eseguito');
+    }
+
+    resultBox.textContent = JSON.stringify(data, null, 2);
+  } catch (error) {
+    resultBox.classList.add('error');
+    resultBox.textContent = error.message;
+  }
+}
+
+refreshBtn.addEventListener('click', () => {
+  loadDevices();
+});
+
+commandPreset.addEventListener('change', () => {
+  document.querySelectorAll('.device-command').forEach((select) => {
+    select.value = commandPreset.value;
+  });
+});
+
+(async function init() {
+  await loadCommandCatalog();
+  await loadDevices();
+  setInterval(loadDevices, 5000);
+})();
